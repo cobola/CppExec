@@ -2,12 +2,16 @@
 
 # CppExec 全新服务器安装脚本
 # 从本地执行，通过 SSH 远程操作服务器
+# 作者: cobola@gmail.com
+# 许可证: MIT License
 
 set -e
 
 echo "=========================================="
 echo "  CppExec 全新安装脚本"
 echo "  警告: 将删除服务器上现有的 CppExec 部署!"
+echo "  作者: cobola@gmail.com"
+echo "  许可证: MIT License"
 echo "=========================================="
 
 # 颜色定义

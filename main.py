@@ -7,13 +7,26 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-app = FastAPI()
+app = FastAPI(
+    title="CppExec - Docker化C++程序接口服务",
+    description="一个轻量级、可扩展的C++程序接口化解决方案",
+    version="1.0.0",
+    contact={
+        "name": "Author",
+        "email": "cobola@gmail.com",
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+)
 
 # Configuration
 API_KEY = os.environ.get("API_KEY", "")
-RATE_LIMIT = 60  # requests per minute
-RATE_WINDOW = 60  # seconds
-CLEANUP_INTERVAL = 300  # cleanup every 5 minutes
+RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "60"))  # requests per minute
+RATE_WINDOW = int(os.environ.get("RATE_WINDOW", "60"))  # seconds
+CLEANUP_INTERVAL = int(os.environ.get("CLEANUP_INTERVAL", "300"))  # cleanup every 5 minutes
+PORT = int(os.environ.get("PORT", "4002"))  # service port
 
 # Rate limiting storage
 ip_requests: dict[str, list[float]] = defaultdict(list)
