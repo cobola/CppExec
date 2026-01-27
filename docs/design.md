@@ -1,127 +1,128 @@
-# Docker化C++程序接口服务设计文档
+# Design Document: Dockerized C++ Program API Service
 
-## 一、需求可行性分析
+## 1. Feasibility Analysis
 
-### 1.1 技术可行性
+### 1.1 Technical Feasibility
 
-**核心技术栈成熟可靠**
-- C++编译与执行：标准g++编译器支持，跨平台兼容性好
-- FastAPI接口层：Python生态成熟，性能优异，文档完善
-- Docker容器化：Alpine镜像轻量，构建流程标准化
+**Mature and Reliable Technology Stack**
+- C++ compilation and execution: Standard g++ compiler support with good cross-platform compatibility
+- FastAPI interface layer: Mature Python ecosystem, excellent performance, comprehensive documentation
+- Docker containerization: Lightweight Alpine image, standardized build process
 
-**关键难点可解决**
-- Judge0接口适配：通过参数映射与字段转换可实现
-- 安全机制：API Key鉴权+IP频率限制可通过中间件实现
-- 性能要求：单容器1核2GB支持50QPS完全可行
+**Key Challenges Solvable**
+- Judge0 interface adaptation: Achievable through parameter mapping and field conversion
+- Security mechanisms: API Key authentication + IP rate limiting implementable via middleware
+- Performance requirements: 50 QPS per container on 1-core 2GB is fully achievable
 
-### 1.2 实现复杂度
+### 1.2 Implementation Complexity
 
-**低复杂度，高可控性**
-- 核心文件仅3个，结构清晰
-- 业务逻辑与接口层解耦，易于维护
-- Docker构建流程标准化，无特殊依赖
+**Low Complexity, High Controllability**
+- Only 3 core files, clear structure
+- Business logic decoupled from interface layer, easy to maintain
+- Standardized Docker build process, no special dependencies
 
-**风险评估**
-- 低风险：所有技术均为业界标准方案
-- 高成功率：类似架构广泛应用于生产环境
+**Risk Assessment**
+- Low risk: All technologies are industry-standard solutions
+- High success rate: Similar architectures widely used in production environments
 
-### 1.3 结论
+### 1.3 Conclusion
 
-**需求完全可行**，技术方案成熟，实现难度适中，可在短时间内完成开发与部署。
+**Requirements are fully feasible**, with mature technical solutions, moderate implementation difficulty, and can be completed in a short time.
 
 ---
 
-## 二、系统架构设计
+## 2. System Architecture Design
 
-### 2.1 整体架构图
+### 2.1 Overall Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        客户端层                              │
+│                        Client Layer                          │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │ 浏览器   │  │ Postman  │  │ curl     │  │ Python   │    │
+│  │ Browser  │  │ Postman  │  │ curl     │  │ Python   │    │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘    │
 └───────┼─────────────┼─────────────┼─────────────┼──────────┘
         │             │             │             │
         ▼             ▼             ▼             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                        网络层                                │
+│                        Network Layer                         │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  HTTP/HTTPS 请求 → 防火墙/安全组 → 4002端口转发      │   │
+│  │  HTTP/HTTPS Request → Firewall/Security Group → 4002 │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
         │
         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                        Docker容器层                         │
+│                     Docker Container Layer                   │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  Alpine 3.19 镜像                                     │   │
+│  │  Alpine 3.19 Image                                    │   │
 │  │  ┌────────────────────────────────────────────────┐  │   │
-│  │  │  FastAPI 服务 (uvicorn)                        │  │   │
+│  │  │  FastAPI Service (uvicorn)                     │  │   │
 │  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐     │  │   │
-│  │  │  │ 鉴权中间件 │  │ 限流中间件 │  │ 执行引擎 │     │  │   │
+│  │  │  │   Auth   │  │   Rate   │  │ Execution│     │  │   │
+│  │  │  │Middleware│  │ Limiter  │  │  Engine  │     │  │   │
 │  │  │  └────┬─────┘  └────┬─────┘  └────┬─────┘     │  │   │
 │  │  └───────┼─────────────┼─────────────┼───────────┘  │   │
 │  │          │             │             │              │   │
 │  │          ▼             ▼             ▼              │   │
 │  │  ┌────────────────────────────────────────────────┐  │   │
-│  │  │  C++ 可执行程序 (cpp_app)                      │  │   │
+│  │  │  C++ Executable (cpp_app)                      │  │   │
 │  │  └────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 模块划分
+### 2.2 Module Division
 
-| 模块名称 | 职责描述 | 技术实现 |
-|---------|---------|---------|
-| **C++业务程序** | 核心计算/逻辑处理 | C++11+，标准输入输出 |
-| **FastAPI接口层** | HTTP接口暴露与请求处理 | Python 3.8+，FastAPI |
-| **安全中间件** | API Key鉴权与IP限流 | FastAPI Middleware |
-| **执行引擎** | C++程序调用与结果捕获 | subprocess模块 |
-| **Docker打包** | 环境封装与部署 | Alpine 3.19，Dockerfile |
+| Module | Responsibility | Technology |
+|--------|---------------|------------|
+| **C++ Business Program** | Core computation/logic processing | C++11+, stdin/stdout |
+| **FastAPI Interface Layer** | HTTP interface exposure and request handling | Python 3.8+, FastAPI |
+| **Security Middleware** | API Key authentication and IP rate limiting | FastAPI Middleware |
+| **Execution Engine** | C++ program invocation and result capture | subprocess module |
+| **Docker Packaging** | Environment encapsulation and deployment | Alpine 3.19, Dockerfile |
 
 ---
 
-## 三、核心模块设计
+## 3. Core Module Design
 
-### 3.1 C++业务程序设计
+### 3.1 C++ Business Program Design
 
-#### 3.1.1 接口规范
+#### 3.1.1 Interface Specification
 
 ```cpp
-// 输入：命令行参数
-// 输出：标准输出(stdout)返回结果，标准错误(stderr)返回错误信息
-// 返回码：0=成功，非0=失败
+// Input: Command-line arguments
+// Output: stdout for results, stderr for error messages
+// Return code: 0=success, non-zero=failure
 
-// 示例代码结构
+// Example code structure
 int main(int argc, char* argv[]) {
-    // 1. 参数校验
+    // 1. Parameter validation
     if (argc != 3) {
-        std::cerr << "参数错误：需要2个参数" << std::endl;
+        std::cerr << "Error: 2 parameters required" << std::endl;
         return 1;
     }
-    
-    // 2. 业务逻辑处理
+
+    // 2. Business logic processing
     double a = std::stod(argv[1]);
     double b = std::stod(argv[2]);
     double result = a + b;
-    
-    // 3. 输出结果
+
+    // 3. Output result
     std::cout << result << std::endl;
     return 0;
 }
 ```
 
-#### 3.1.2 编译规范
+#### 3.1.2 Compilation Specification
 
 ```bash
 g++ -std=c++11 -o cpp_app main.cpp
 ```
 
-### 3.2 FastAPI接口层设计
+### 3.2 FastAPI Interface Layer Design
 
-#### 3.2.1 接口定义
+#### 3.2.1 Interface Definition
 
 ```python
 from fastapi import FastAPI, Request, HTTPException
@@ -130,15 +131,15 @@ import subprocess
 import time
 from typing import Optional
 
-app = FastAPI(title="C++程序接口服务", version="1.0")
+app = FastAPI(title="C++ Program API Service", version="1.0")
 
-# Judge0兼容请求模型
+# Judge0-compatible request model
 class ExecuteRequest(BaseModel):
-    source_code: Optional[str] = None  # 兼容字段
-    stdin: Optional[str] = None        # 输入参数
-    language_id: Optional[int] = None  # 兼容字段
+    source_code: Optional[str] = None  # Compatibility field
+    stdin: Optional[str] = None        # Input parameters
+    language_id: Optional[int] = None  # Compatibility field
 
-# Judge0兼容响应模型
+# Judge0-compatible response model
 class Status(BaseModel):
     id: int
     description: str
@@ -152,71 +153,71 @@ class ExecuteResponse(BaseModel):
     exit_code: int
 ```
 
-#### 3.2.2 安全中间件
+#### 3.2.2 Security Middleware
 
 ```python
-# API Key配置
+# API Key configuration
 API_KEYS = {"your-secret-key-here"}
 
-# IP限流配置
-RATE_LIMIT = 60  # 每分钟请求数
+# IP rate limiting configuration
+RATE_LIMIT = 60  # Requests per minute
 ip_requests = {}
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    # 1. API Key鉴权
+    # 1. API Key authentication
     api_key = request.headers.get("X-API-Key")
     if not api_key or api_key not in API_KEYS:
-        raise HTTPException(status_code=401, detail="未授权访问")
-    
-    # 2. IP频率限制
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # 2. IP rate limiting
     client_ip = request.client.host
     current_time = time.time()
-    
+
     if client_ip not in ip_requests:
         ip_requests[client_ip] = []
-    
-    # 清理60秒前的请求记录
+
+    # Clean up requests older than 60 seconds
     ip_requests[client_ip] = [
-        t for t in ip_requests[client_ip] 
+        t for t in ip_requests[client_ip]
         if current_time - t < 60
     ]
-    
+
     if len(ip_requests[client_ip]) >= RATE_LIMIT:
-        raise HTTPException(status_code=429, detail="请求频率超限")
-    
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
     ip_requests[client_ip].append(current_time)
-    
+
     response = await call_next(request)
     return response
 ```
 
-#### 3.2.3 执行接口实现
+#### 3.2.3 Execute Endpoint Implementation
 
 ```python
 @app.post("/execute", response_model=ExecuteResponse)
 async def execute(request: ExecuteRequest):
     try:
-        # 解析参数（兼容Judge0格式）
+        # Parse parameters (Judge0 format compatible)
         input_params = request.stdin or ""
         params = input_params.split()
-        
-        # 构建C++程序调用命令
+
+        # Build C++ program call command
         cmd = ["./cpp_app"] + params
-        
-        # 执行C++程序
+
+        # Execute C++ program
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=10  # 超时限制
+            timeout=10  # Timeout limit
         )
-        
-        # 构建响应
+
+        # Build response
         if result.returncode == 0:
             return ExecuteResponse(
                 code=200,
-                msg="调用成功",
+                msg="Success",
                 status=Status(id=1, description="Completed"),
                 stdout=result.stdout.strip(),
                 stderr="",
@@ -225,26 +226,26 @@ async def execute(request: ExecuteRequest):
         else:
             return ExecuteResponse(
                 code=500,
-                msg="C++程序执行失败",
+                msg="C++ program execution failed",
                 status=Status(id=2, description="Runtime Error"),
                 stdout="",
                 stderr=result.stderr.strip(),
                 exit_code=result.returncode
             )
-            
+
     except subprocess.TimeoutExpired:
         return ExecuteResponse(
             code=500,
-            msg="程序执行超时",
+            msg="Program execution timeout",
             status=Status(id=4, description="Time Limit Exceeded"),
             stdout="",
-            stderr="程序执行超过10秒",
+            stderr="Program execution exceeded 10 seconds",
             exit_code=-1
         )
     except Exception as e:
         return ExecuteResponse(
             code=400,
-            msg="接口调用失败",
+            msg="API call failed",
             status=Status(id=3, description="Bad Request"),
             stdout="",
             stderr=str(e),
@@ -252,15 +253,15 @@ async def execute(request: ExecuteRequest):
         )
 ```
 
-### 3.3 Docker打包设计
+### 3.3 Docker Packaging Design
 
 #### 3.3.1 Dockerfile
 
 ```dockerfile
-# 基础镜像
+# Base image
 FROM alpine:3.19
 
-# 安装依赖
+# Install dependencies
 RUN apk add --no-cache \
     g++ \
     python3 \
@@ -268,67 +269,67 @@ RUN apk add --no-cache \
     gcc \
     make
 
-# 设置工作目录
+# Set working directory
 WORKDIR /app
 
-# 复制C++源代码
+# Copy C++ source code
 COPY main.cpp .
 
-# 编译C++程序
+# Compile C++ program
 RUN g++ -std=c++11 -o cpp_app main.cpp
 
-# 复制Python代码
+# Copy Python code
 COPY main.py .
 
-# 安装Python依赖
+# Install Python dependencies
 RUN pip3 install --no-cache-dir fastapi>=0.100.0 uvicorn>=0.23.2
 
-# 暴露端口
+# Expose port
 EXPOSE 4002
 
-# 启动命令
+# Start command
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "4002"]
 ```
 
-#### 3.3.2 构建流程
+#### 3.3.2 Build Process
 
 ```bash
-# 构建镜像
+# Build image
 docker build -t cpp-api:v1 .
 
-# 启动容器
+# Start container
 docker run -d -p 4002:4002 --name cpp-api-server cpp-api:v1
 
-# 查看日志
+# View logs
 docker logs -f cpp-api-server
 ```
 
 ---
 
-## 四、接口调用规范
+## 4. API Specification
 
-### 4.1 基础信息
+### 4.1 Basic Information
 
-- **接口地址**：`http://[IP]:4002/execute`
-- **请求方式**：POST
-- **Content-Type**：application/json
-- **认证方式**：请求头 `X-API-Key`
+- **Endpoint**: `http://[IP]:4002/execute`
+- **Method**: POST
+- **Content-Type**: application/json
+- **Authentication**: `X-API-Key` header
 
-### 4.2 请求参数
+### 4.2 Request Parameters
 
 ```json
 {
-    "stdin": "1.5 2.5"  // C++程序输入参数，空格分隔
+    "stdin": "1.5 2.5"  // C++ program input parameters, space-separated
 }
 ```
 
-### 4.3 响应示例
+### 4.3 Response Examples
 
-#### 成功响应
+#### Success Response
 ```json
 {
     "code": 200,
-    "msg": "调用成功",
+    "msg": "Success",
     "status": {
         "id": 1,
         "description": "Completed"
@@ -339,24 +340,24 @@ docker logs -f cpp-api-server
 }
 ```
 
-#### 错误响应
+#### Error Response
 ```json
 {
     "code": 500,
-    "msg": "C++程序执行失败",
+    "msg": "C++ program execution failed",
     "status": {
         "id": 2,
         "description": "Runtime Error"
     },
     "stdout": "",
-    "stderr": "参数错误：需要2个参数",
+    "stderr": "Error: 2 parameters required",
     "exit_code": 1
 }
 ```
 
-### 4.4 调用示例
+### 4.4 Usage Examples
 
-#### curl命令
+#### curl Command
 ```bash
 curl -X POST http://localhost:4002/execute \
   -H "X-API-Key: your-secret-key-here" \
@@ -364,7 +365,7 @@ curl -X POST http://localhost:4002/execute \
   -d '{"stdin": "1.5 2.5"}'
 ```
 
-#### Python代码
+#### Python Code
 ```python
 import requests
 
@@ -381,137 +382,138 @@ print(response.json())
 
 ---
 
-## 五、部署方案
+## 5. Deployment Guide
 
-### 5.1 本地开发部署
+### 5.1 Local Development Deployment
 
 ```bash
-# 1. 编译C++程序
+# 1. Compile C++ program
 g++ -std=c++11 -o cpp_app main.cpp
 
-# 2. 安装Python依赖
+# 2. Install Python dependencies
 pip install fastapi uvicorn
 
-# 3. 启动服务
+# 3. Start service
 uvicorn main:app --host 0.0.0.0 --port 4002
 ```
 
-### 5.2 Docker部署
+### 5.2 Docker Deployment
 
 ```bash
-# 1. 构建镜像
+# 1. Build image
 docker build -t cpp-api:v1 .
 
-# 2. 启动容器
+# 2. Start container
 docker run -d -p 4002:4002 --name cpp-api-server cpp-api:v1
 
-# 3. 验证服务
+# 3. Verify service
 docker ps
-# 输出应包含 cpp-api-server 容器，状态为 Up
+# Output should show cpp-api-server container with status "Up"
 ```
 
-### 5.3 服务器部署注意事项
+### 5.3 Server Deployment Notes
 
-1. **端口配置**：确保服务器安全组放行4002端口
-2. **Docker版本**：要求≥20.10.0
-3. **资源配置**：建议1核2GB以上内存
-4. **安全加固**：
-   - 定期更新API Key
-   - 限制访问来源IP
-   - 禁止容器以root用户运行
+1. **Port Configuration**: Ensure server security group allows port 4002
+2. **Docker Version**: Requires >= 20.10.0
+3. **Resource Configuration**: Recommended 1 core, 2GB+ memory
+4. **Security Hardening**:
+   - Regularly update API Key
+   - Restrict source IP access
+   - Avoid running container as root user
 
 ---
 
-## 六、性能优化建议
+## 6. Performance Optimization
 
-### 6.1 并发优化
+### 6.1 Concurrency Optimization
 
 ```bash
-# 启动多进程服务
+# Start multi-process service
 docker run -d -p 4002:4002 \
   --name cpp-api-server \
   cpp-api:v1 \
   uvicorn main:app --host 0.0.0.0 --port 4002 --workers 4
 ```
 
-### 6.2 性能监控
+### 6.2 Performance Monitoring
 
 ```bash
-# 查看容器资源使用
+# View container resource usage
 docker stats cpp-api-server
 
-# 查看接口响应时间
+# Check API response time
 curl -w "%{time_total}\n" http://localhost:4002/execute
 ```
 
-### 6.3 进阶优化（可选）
+### 6.3 Advanced Optimization (Optional)
 
-1. **动态库调用**：将C++程序编译为动态库，通过Python ctypes直接调用
-2. **连接池优化**：使用uvicorn的`--loop uvloop`提升性能
-3. **缓存机制**：对重复请求结果进行缓存
+1. **Dynamic Library Calls**: Compile C++ program as shared library, call directly via Python ctypes
+2. **Connection Pool Optimization**: Use uvicorn's `--loop uvloop` for better performance
+3. **Caching Mechanism**: Cache results for repeated requests
 
 ---
 
-## 七、故障排查指南
+## 7. Troubleshooting Guide
 
-### 7.1 常见问题
+### 7.1 Common Issues
 
-| 问题现象 | 可能原因 | 解决方案 |
-|---------|---------|---------|
-| 容器启动失败 | 端口被占用 | 修改端口映射或释放4002端口 |
-| 接口返回401 | API Key错误 | 检查请求头中的X-API-Key |
-| 接口返回429 | 请求频率超限 | 降低请求频率或调整限流阈值 |
-| C++程序执行失败 | 参数格式错误 | 检查输入参数是否符合要求 |
-| 响应时间过长 | C++程序耗时 | 优化C++业务逻辑或增加超时时间 |
+| Symptom | Possible Cause | Solution |
+|---------|---------------|----------|
+| Container fails to start | Port occupied | Change port mapping or free port 4002 |
+| API returns 401 | Invalid API Key | Check X-API-Key header |
+| API returns 429 | Rate limit exceeded | Reduce request frequency or adjust limit |
+| C++ program execution fails | Invalid parameters | Check input parameter format |
+| Slow response time | C++ program slow | Optimize C++ logic or increase timeout |
 
-### 7.2 日志查看
+### 7.2 Log Viewing
 
 ```bash
-# 查看容器日志
+# View container logs
 docker logs -f cpp-api-server
 
-# 查看最近100行日志
+# View last 100 lines
 docker logs --tail 100 cpp-api-server
 ```
 
 ---
 
-## 八、扩展方案
+## 8. Extension Guide
 
-### 8.1 业务逻辑扩展
+### 8.1 Business Logic Extension
 
-1. **替换C++程序**：修改`main.cpp`并重新编译
-2. **调整参数格式**：同步修改`main.py`中的参数解析逻辑
-3. **添加依赖库**：在Dockerfile中添加编译依赖
+1. **Replace C++ Program**: Modify `main.cpp` and recompile
+2. **Adjust Parameter Format**: Update parameter parsing logic in `main.py`
+3. **Add Dependencies**: Add compilation dependencies in Dockerfile
 
-### 8.2 功能扩展
+### 8.2 Feature Extension
 
-1. **文件上传**：添加文件上传接口，支持C++程序处理文件
-2. **结果持久化**：将执行结果存储到数据库
-3. **异步执行**：支持任务提交与结果查询模式
-4. **多语言支持**：扩展支持Python、Java等其他语言程序
+1. **File Upload**: Add file upload endpoint for C++ program file processing
+2. **Result Persistence**: Store execution results in database
+3. **Async Execution**: Support task submission and result query mode
+4. **Multi-language Support**: Extend to support Python, Java, and other languages
 
-### 8.3 架构扩展
+### 8.3 Architecture Extension
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        扩展架构                              │
+│                    Extended Architecture                     │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │ 负载均衡  │  │ 缓存层   │  │ 消息队列 │  │ 数据库   │    │
+│  │   Load   │  │  Cache   │  │  Message │  │ Database │    │
+│  │ Balancer │  │  Layer   │  │  Queue   │  │          │    │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 九、总结
+## 9. Summary
 
-本设计文档基于需求文档，提供了完整的技术实现方案，涵盖系统架构、核心模块设计、接口规范、部署方案等内容。方案具备以下特点：
+This design document provides a complete technical implementation plan based on the requirements document, covering system architecture, core module design, API specifications, and deployment guides. The solution features:
 
-- **高可行性**：采用成熟技术栈，风险可控
-- **易维护性**：模块划分清晰，代码结构简洁
-- **可扩展性**：支持业务逻辑与功能扩展
-- **高性能**：满足50QPS的性能要求
-- **安全性**：完善的鉴权与限流机制
+- **High Feasibility**: Mature technology stack, controllable risks
+- **Easy Maintenance**: Clear module division, concise code structure
+- **Extensibility**: Supports business logic and feature extensions
+- **High Performance**: Meets 50 QPS performance requirements
+- **Security**: Complete authentication and rate limiting mechanisms
 
-通过本方案，可快速实现Docker化C++程序接口服务，满足“极简可运行、易替换、跨平台”的核心目标。
+This solution enables rapid implementation of Dockerized C++ program API services, meeting the core goals of "minimal deployment, easy replacement, cross-platform support".
