@@ -2,7 +2,12 @@ import os
 import subprocess
 import time
 import threading
+import tempfile
+import uuid
+import resource
+import signal
 from collections import defaultdict
+from typing import Optional
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -97,6 +102,32 @@ class ExecuteResponse(BaseModel):
     time: float
 
 
+# Judge0-compatible status codes
+class StatusCode:
+    ACCEPTED = 3
+    WRONG_ANSWER = 4
+    TIME_LIMIT_EXCEEDED = 5
+    COMPILATION_ERROR = 6
+    RUNTIME_ERROR_SIGSEGV = 7
+    RUNTIME_ERROR_OTHER = 11
+
+
+class SubmissionRequest(BaseModel):
+    source_code: str
+    stdin: str = ""
+    time_limit: float = 5.0
+    memory_limit: int = 256000  # KB
+
+
+class SubmissionResponse(BaseModel):
+    stdout: str
+    stderr: str
+    status: dict
+    time: float
+    memory: int  # KB
+    compile_output: str = ""
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -138,6 +169,106 @@ async def execute(request: ExecuteRequest):
             exit_code=-1,
             time=elapsed_time
         )
+
+
+@app.post("/submissions", response_model=SubmissionResponse)
+async def submit_code(request: SubmissionRequest):
+    """
+    Compile and execute C++ source code.
+    Returns Judge0-compatible status codes.
+    """
+    submission_id = str(uuid.uuid4())[:8]
+    source_file = f"/tmp/submission_{submission_id}.cpp"
+    binary_file = f"/tmp/submission_{submission_id}"
+
+    compile_output = ""
+    stdout = ""
+    stderr = ""
+    status_id = StatusCode.ACCEPTED
+    status_desc = "Accepted"
+    exec_time = 0.0
+    memory_used = 0
+
+    try:
+        # Write source code to temp file
+        with open(source_file, 'w') as f:
+            f.write(request.source_code)
+
+        # Compile
+        compile_start = time.time()
+        compile_result = subprocess.run(
+            ["g++", "-std=c++17", "-O2", "-o", binary_file, source_file],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if compile_result.returncode != 0:
+            compile_output = compile_result.stderr
+            status_id = StatusCode.COMPILATION_ERROR
+            status_desc = "Compilation Error"
+            return SubmissionResponse(
+                stdout="",
+                stderr="",
+                status={"id": status_id, "description": status_desc},
+                time=0.0,
+                memory=0,
+                compile_output=compile_output
+            )
+
+        # Execute with timeout and resource limits
+        exec_start = time.time()
+        try:
+            result = subprocess.run(
+                [binary_file],
+                input=request.stdin,
+                capture_output=True,
+                text=True,
+                timeout=request.time_limit
+            )
+            exec_time = time.time() - exec_start
+
+            stdout = result.stdout
+            stderr = result.stderr
+
+            # Check exit code for runtime errors
+            if result.returncode != 0:
+                if result.returncode == -signal.SIGSEGV or result.returncode == 139:
+                    status_id = StatusCode.RUNTIME_ERROR_SIGSEGV
+                    status_desc = "Runtime Error (SIGSEGV)"
+                else:
+                    status_id = StatusCode.RUNTIME_ERROR_OTHER
+                    status_desc = f"Runtime Error (exit code: {result.returncode})"
+            else:
+                status_id = StatusCode.ACCEPTED
+                status_desc = "Accepted"
+
+        except subprocess.TimeoutExpired:
+            exec_time = request.time_limit
+            status_id = StatusCode.TIME_LIMIT_EXCEEDED
+            status_desc = "Time Limit Exceeded"
+
+    except Exception as e:
+        stderr = str(e)
+        status_id = StatusCode.RUNTIME_ERROR_OTHER
+        status_desc = f"Runtime Error: {str(e)}"
+
+    finally:
+        # Cleanup temp files
+        for f in [source_file, binary_file]:
+            try:
+                os.remove(f)
+            except:
+                pass
+
+    return SubmissionResponse(
+        stdout=stdout,
+        stderr=stderr,
+        status={"id": status_id, "description": status_desc},
+        time=round(exec_time, 3),
+        memory=memory_used,
+        compile_output=compile_output
+    )
 
 
 if __name__ == "__main__":
