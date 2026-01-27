@@ -33,3 +33,4 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+deploy/.env
