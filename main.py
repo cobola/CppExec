@@ -1,8 +1,9 @@
 import os
+import re
+import shutil
 import subprocess
 import time
 import threading
-import tempfile
 import uuid
 import resource
 import signal
@@ -32,6 +33,92 @@ RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "60"))  # requests per minute
 RATE_WINDOW = int(os.environ.get("RATE_WINDOW", "60"))  # seconds
 CLEANUP_INTERVAL = int(os.environ.get("CLEANUP_INTERVAL", "300"))  # cleanup every 5 minutes
 PORT = int(os.environ.get("PORT", "4002"))  # service port
+
+# Workspace directory for user code file operations
+WORKSPACE_DIR = "/app/workspace"
+
+# Dangerous code patterns that should be blocked
+DANGEROUS_PATTERNS = [
+    (r'\bsystem\s*\(', 'system() call'),
+    (r'\bexec[lv]?[pe]?\s*\(', 'exec*() call'),
+    (r'\bfork\s*\(', 'fork() call'),
+    (r'\bpopen\s*\(', 'popen() call'),
+    (r'\bpthread_create\s*\(', 'pthread_create() call'),
+    (r'#include\s*<sys/socket\.h>', 'socket programming'),
+    (r'#include\s*<netinet/', 'network programming'),
+    (r'#include\s*<arpa/', 'network programming'),
+    (r'\bsocket\s*\(', 'socket() call'),
+    (r'\bconnect\s*\(', 'connect() call'),
+    (r'\bbind\s*\(', 'bind() call'),
+    (r'\blisten\s*\(', 'listen() call'),
+    (r'\baccept\s*\(', 'accept() call'),
+    (r'\bsendto\s*\(', 'sendto() call'),
+    (r'\brecvfrom\s*\(', 'recvfrom() call'),
+    (r'\bchmod\s*\(', 'chmod() call'),
+    (r'\bchown\s*\(', 'chown() call'),
+    (r'\bunlink\s*\(', 'unlink() call'),
+    (r'\brmdir\s*\(', 'rmdir() call'),
+    (r'\bmkdir\s*\(', 'mkdir() call'),
+    (r'\brename\s*\(', 'rename() call'),
+    (r'\bkill\s*\(', 'kill() call'),
+    (r'\basm\s*\(', 'inline assembly'),
+    (r'\b__asm__\s*\(', 'inline assembly'),
+    (r'\bsetuid\s*\(', 'setuid() call'),
+    (r'\bsetgid\s*\(', 'setgid() call'),
+    (r'\bchroot\s*\(', 'chroot() call'),
+    (r'\bmount\s*\(', 'mount() call'),
+    (r'\bumount\s*\(', 'umount() call'),
+    (r'\bptrace\s*\(', 'ptrace() call'),
+    (r'\bmmap\s*\([^)]*PROT_EXEC', 'executable mmap'),
+    (r'\bdlopen\s*\(', 'dlopen() call'),
+    (r'\bdlsym\s*\(', 'dlsym() call'),
+]
+
+
+def check_dangerous_code(source_code: str) -> tuple[bool, str]:
+    """
+    Check if source code contains dangerous patterns.
+    Returns (is_safe, reason).
+    """
+    for pattern, description in DANGEROUS_PATTERNS:
+        if re.search(pattern, source_code):
+            return False, f"Forbidden: {description} is not allowed"
+    return True, ""
+
+
+def set_resource_limits():
+    """Set resource limits for subprocess execution."""
+    # Memory limit: 256MB
+    mem_limit = 256 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
+
+    # CPU time limit: 10 seconds
+    resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
+
+    # Max file size: 10MB
+    file_limit = 10 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
+
+    # Max number of processes: 1 (no fork)
+    resource.setrlimit(resource.RLIMIT_NPROC, (1, 1))
+
+    # Max open files: 20
+    resource.setrlimit(resource.RLIMIT_NOFILE, (20, 20))
+
+
+def clean_workspace():
+    """Clean up workspace directory before each execution."""
+    if os.path.exists(WORKSPACE_DIR):
+        for item in os.listdir(WORKSPACE_DIR):
+            path = os.path.join(WORKSPACE_DIR, item)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                else:
+                    shutil.rmtree(path)
+            except:
+                pass
+
 
 # Rate limiting storage
 ip_requests: dict[str, list[float]] = defaultdict(list)
@@ -177,6 +264,18 @@ async def submit_code(request: SubmissionRequest):
     Compile and execute C++ source code.
     Returns Judge0-compatible status codes.
     """
+    # Check for dangerous code patterns
+    is_safe, reason = check_dangerous_code(request.source_code)
+    if not is_safe:
+        return SubmissionResponse(
+            stdout="",
+            stderr=reason,
+            status={"id": StatusCode.RUNTIME_ERROR_OTHER, "description": reason},
+            time=0.0,
+            memory=0,
+            compile_output=""
+        )
+
     submission_id = str(uuid.uuid4())[:8]
     source_file = f"/tmp/submission_{submission_id}.cpp"
     binary_file = f"/tmp/submission_{submission_id}"
@@ -194,10 +293,10 @@ async def submit_code(request: SubmissionRequest):
         with open(source_file, 'w') as f:
             f.write(request.source_code)
 
-        # Compile
+        # Compile with security flags
         compile_start = time.time()
         compile_result = subprocess.run(
-            ["g++", "-std=c++17", "-O2", "-o", binary_file, source_file],
+            ["g++", "-std=c++17", "-O2", "-fno-stack-protector", "-o", binary_file, source_file],
             capture_output=True,
             text=True,
             timeout=30
@@ -216,6 +315,9 @@ async def submit_code(request: SubmissionRequest):
                 compile_output=compile_output
             )
 
+        # Clean workspace before execution
+        clean_workspace()
+
         # Execute with timeout and resource limits
         exec_start = time.time()
         try:
@@ -224,7 +326,9 @@ async def submit_code(request: SubmissionRequest):
                 input=request.stdin,
                 capture_output=True,
                 text=True,
-                timeout=request.time_limit
+                timeout=request.time_limit,
+                cwd=WORKSPACE_DIR,
+                preexec_fn=set_resource_limits
             )
             exec_time = time.time() - exec_start
 
@@ -236,6 +340,9 @@ async def submit_code(request: SubmissionRequest):
                 if result.returncode == -signal.SIGSEGV or result.returncode == 139:
                     status_id = StatusCode.RUNTIME_ERROR_SIGSEGV
                     status_desc = "Runtime Error (SIGSEGV)"
+                elif result.returncode == -signal.SIGXCPU or result.returncode == 137:
+                    status_id = StatusCode.TIME_LIMIT_EXCEEDED
+                    status_desc = "Time Limit Exceeded (CPU)"
                 else:
                     status_id = StatusCode.RUNTIME_ERROR_OTHER
                     status_desc = f"Runtime Error (exit code: {result.returncode})"
@@ -260,6 +367,8 @@ async def submit_code(request: SubmissionRequest):
                 os.remove(f)
             except:
                 pass
+        # Clean workspace after execution
+        clean_workspace()
 
     return SubmissionResponse(
         stdout=stdout,
