@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  cppexec-blue:
+    image: crpi-1e1v7t6udr8xqx6k.cn-beijing.personal.cr.aliyuncs.com/cobola/cppexec:latest
+    container_name: cppexec-blue
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=4002
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cppexec_network
+
+  cppexec-green:
+    image: crpi-1e1v7t6udr8xqx6k.cn-beijing.personal.cr.aliyuncs.com/cobola/cppexec:latest
+    container_name: cppexec-green
+    restart: unless-stopped
+    ports:
+      - "4003:4002"
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=4002
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cppexec_network
+
+networks:
+  cppexec_network:
+    driver: bridge

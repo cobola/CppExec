@@ -1,112 +1,113 @@
-# Contributing Guide
+# 贡献指南
 
-Thank you for your interest in contributing to CppExec!
+感谢你有兴趣为 CppExec 项目做出贡献！
 
-## Code of Conduct
+## 行为准则
 
-### Our Pledge
+### 我们的承诺
 
-We are committed to providing a welcoming and harassment-free environment for everyone participating in our project and community.
+为了营造一个开放和友好的环境，我们作为贡献者和维护者承诺让每个人都能无骚扰地参与我们的项目和社区。
 
-### Our Standards
+### 我们的标准
 
-Behaviors that contribute to a positive environment include:
+有助于创建积极环境的行为包括：
 
-- Using welcoming and inclusive language
-- Respecting differing viewpoints and experiences
-- Gracefully accepting constructive criticism
-- Focusing on what is best for the community
-- Showing empathy towards other community members
+- 使用友好和包容的语言
+- 尊重不同的观点和经验
+- 优雅地接受建设性批评
+- 关注对社区最有利的事情
+- 对其他社区成员表现出同理心
 
-## How to Contribute
+## 如何贡献
 
-### Reporting Issues
+### 报告问题
 
-1. Search existing issues before submitting a new one
-2. Use a clear and descriptive title
-3. Provide steps to reproduce the issue
-4. Include screenshots if applicable
-5. Describe your environment (OS, Docker version, etc.)
+1. 在提交新问题之前，请先搜索现有问题
+2. 使用清晰的标题和描述
+3. 提供重现步骤
+4. 包含屏幕截图（如果适用）
+5. 说明你的环境（操作系统、Docker版本等）
 
-### Submitting Code
+### 提交代码
 
-#### Setting Up Development Environment
+#### 准备开发环境
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/CppExec.git
+# 克隆仓库
+git clone <repository-url>
 cd CppExec
 
-# Build Docker image
+# 构建Docker镜像
 docker build -t cpp-exec:dev .
 
-# Start development container
+# 启动开发容器
 docker run -d -p 4002:4002 -v $(pwd):/app --name cpp-exec-dev cpp-exec:dev
 ```
 
-#### Pull Request Process
+#### 提交PR流程
 
-1. Fork the project
-2. Create a feature branch:
+1. Fork 项目
+2. 创建特性分支：
    ```bash
    git checkout -b feature/your-feature-name
    ```
-3. Commit your changes:
+3. 提交更改：
    ```bash
    git commit -m "Add some feature"
    ```
-   - Commit messages should clearly describe the changes
-4. Push to the branch:
+   - 提交信息应清晰描述所做的更改
+   - 使用英文或中文均可，保持一致
+4. 推送到分支：
    ```bash
    git push origin feature/your-feature-name
    ```
-5. Open a Pull Request
+5. 打开 Pull Request
 
-#### Coding Standards
+#### 代码规范
 
-**C++ Code Standards**
+**C++ 代码规范**
 
-- Follow C++11 or later standards
-- Use 4-space indentation
-- Variable names: snake_case
-- Function names: camelCase
-- Class names: PascalCase
-- Keep code concise, avoid unnecessary nesting
-- Add comments for complex logic
+- 遵循 C++11 及以上标准
+- 使用 4 空格缩进
+- 变量命名使用蛇形命名法（snake_case）
+- 函数命名使用驼峰命名法（camelCase）
+- 类名使用大驼峰命名法（PascalCase）
+- 保持代码简洁，避免不必要的嵌套
+- 添加必要的注释说明复杂逻辑
 
-**Python Code Standards**
+**Python 代码规范**
 
-- Follow PEP 8 guidelines
-- Use 4-space indentation
-- Variable and function names: snake_case
-- Class names: PascalCase
-- Organize imports: standard library, third-party, local
-- Use type hints
+- 遵循 PEP 8 规范
+- 使用 4 空格缩进
+- 变量和函数命名使用蛇形命名法（snake_case）
+- 类名使用大驼峰命名法（PascalCase）
+- 导入按标准库、第三方库、本地库顺序排列
+- 使用类型提示
 
-**Dockerfile Standards**
+**Dockerfile 规范**
 
-- Use official base images
-- Minimize image layers (combine RUN commands)
-- Use --no-cache-dir to avoid caching
-- Order commands: install dependencies -> copy files -> build -> cleanup
-- Use .dockerignore to exclude unnecessary files
+- 使用官方基础镜像
+- 减少镜像层数（合并 RUN 命令）
+- 使用 --no-cache-dir 避免缓存
+- 按顺序排列命令（安装依赖 → 复制文件 → 构建 → 清理）
+- 使用 .dockerignore 排除不必要的文件
 
-### Documentation Contributions
+### 文档贡献
 
-- Improve README.md
-- Add usage examples
-- Enhance API documentation
-- Translate documentation
+- 改进 README.md
+- 添加使用示例
+- 完善 API 文档
+- 翻译文档
 
-## License
+## 许可证
 
-By contributing code, you agree that your contributions will be licensed under the MIT License.
+通过贡献代码，你同意你的贡献将在 MIT 许可证下发布。
 
-## Questions?
+## 问题？
 
-If you have any questions, please contact us:
+如有任何问题，请通过以下方式联系我们：
 
-- Submit an Issue
-- Email: cobola@gmail.com
+- 提交 Issue
+- 发送邮件至 cobola@gmail.com
 
-Thank you for contributing!
+再次感谢你的贡献！

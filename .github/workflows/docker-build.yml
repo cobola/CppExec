@@ -1,0 +1,120 @@
+name: Build and Deploy CppExec
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: '强制构建镜像'
+        type: boolean
+        default: true
+
+env:
+  REGISTRY: ${{ env.ALIYUN_REGISTRY }}
+  NAMESPACE: cobola
+  IMAGE_NAME: cppexec
+  REMOTE_DIR: /opt/cppexec
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.APP_SERVER }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.NGINX_SERVER }} >> ~/.ssh/known_hosts
+
+      - name: Sync files to App Server
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            ./ root@${{ secrets.APP_SERVER }}:${{ env.REMOTE_DIR }}/
+
+      - name: Write .env file on App Server
+        run: |
+          ssh root@${{ secrets.APP_SERVER }} "mkdir -p ${{ env.REMOTE_DIR }} && cat > ${{ env.REMOTE_DIR }}/.env << 'ENVEOF'
+          ${{ secrets.ENV_FILE }}
+          ENVEOF"
+
+      - name: Deploy (Blue-Green) on App Server
+        run: |
+          ssh root@${{ secrets.APP_SERVER }} << 'EOF'
+            cd /opt/cppexec
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh
+          EOF
+
+      - name: Get Active Port
+        id: get_port
+        run: |
+          ACTIVE_PORT=$(ssh root@${{ secrets.APP_SERVER }} "docker ps --format '{{.Names}} {{.Ports}}' | grep cppexec | head -1 | grep -oE '0\.0\.0\.0:[0-9]+' | cut -d: -f2")
+          echo "active_port=$ACTIVE_PORT" >> $GITHUB_OUTPUT
+          echo "当前活跃端口: $ACTIVE_PORT"
+
+      - name: Update Nginx on Proxy Server
+        run: |
+          ssh root@${{ secrets.NGINX_SERVER }} << EOF
+            # 从 App Server 复制 nginx 配置
+            scp root@${{ secrets.APP_SERVER }}:/opt/cppexec/nginx.conf /etc/nginx/conf.d/cppexec.conf
+            
+            # 替换 APP_SERVER 占位符为实际 IP
+            sed -i 's/APP_SERVER/${{ secrets.APP_SERVER }}/g' /etc/nginx/conf.d/cppexec.conf
+            
+            # 替换端口为当前活跃端口
+            sed -i 's/:4002/:${{ steps.get_port.outputs.active_port }}/g' /etc/nginx/conf.d/cppexec.conf
+            
+            # 测试并重启 nginx
+            nginx -t && nginx -s reload
+          EOF
+
+      - name: 发送飞书构建结果
+        if: always()
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          method: POST
+          contentType: application/json
+          data: |
+            {
+              "msg_type": "text",
+              "content": {
+                "text": "✅ CppExec 部署完成\n🔗 仓库: ${{ github.repository }}\n🌿 分支: ${{ github.ref_name }}\n🧪 状态: ${{ job.status }}\n👤 提交人: ${{ github.actor }}"
+              }
+            }
