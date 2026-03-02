@@ -11,7 +11,7 @@ on:
         default: true
 
 env:
-  REGISTRY: ${{ env.ALIYUN_REGISTRY }}
+  REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
   NAMESPACE: cobola
   IMAGE_NAME: cppexec
   REMOTE_DIR: /opt/cppexec
